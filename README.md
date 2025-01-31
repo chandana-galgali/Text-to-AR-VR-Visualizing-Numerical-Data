@@ -1,1 +1,2 @@
-# Text-to-VR-Visualizing-Numerical-Data
+# Text-to-VR-Visualizing-Numerical-Data 
+The objective of this project is to create a system that transforms specific textual inputs into visual data representations within a VR environment. By leveraging AI for text processing and Unity for VR visualization, the project aims to analyze user inputs based on numerical data, extract meaningful data, and generate appropriate visualizations like pie charts, bar graphs, etc.  The goal is to provide an immersive and intuitive way to interpret and interact with numerical data derived from textual descriptions, enhancing user understanding of key patterns and relationships.
