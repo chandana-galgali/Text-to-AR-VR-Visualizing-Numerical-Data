@@ -1,0 +1,171 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="card shadow">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <h3 class="my-2"><i class="bi bi-grid-3x3-gap me-2"></i>Visualization Dashboard</h3>
+        <div>
+            <a href="{% url 'index' %}" class="btn btn-light btn-sm">
+                <i class="bi bi-plus-circle me-1"></i> Create New
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if visualizations %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th>Data Input</th>
+                            <th>Visualization Type</th>
+                            <th>Method</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for viz in visualizations %}
+                        <tr>
+                            <td>{{ viz.id }}</td>
+                            <td>
+                                <span class="d-inline-block text-truncate" style="max-width: 200px;" 
+                                      title="{{ viz.input_text }}">
+                                    {{ viz.input_text }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if viz.visualization_type %}
+                                    <span class="badge bg-success">{{ viz.visualization_type }}</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Not specified</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if viz.processing_method == 'script' %}
+                                    <span class="badge bg-info">Local</span>
+                                {% elif viz.processing_method == 'openai' %}
+                                    <span class="badge bg-warning">API</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Unknown</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="d-none d-md-inline">{{ viz.created_at|date:"M d, Y H:i" }}</span>
+                                <span class="d-md-none">{{ viz.created_at|date:"m/d/y" }}</span>
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <a href="{% url 'result' viz.id %}" class="btn btn-primary" title="View details">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                    <a href="#" class="btn btn-success unity-link" data-id="{{ viz.id }}" title="3D View">
+                                        <i class="bi bi-controller"></i>
+                                    </a>
+                                    {% if viz.visualization_image %}
+                                    <a href="data:image/png;base64,{{ viz.visualization_image }}" 
+                                       class="btn btn-info" 
+                                       title="Preview 2D" 
+                                       data-bs-toggle="modal" 
+                                       data-bs-target="#imageModal"
+                                       data-image="data:image/png;base64,{{ viz.visualization_image }}">
+                                        <i class="bi bi-image"></i>
+                                    </a>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination -->
+            {% if is_paginated %}
+            <nav aria-label="Page navigation">
+                <ul class="pagination justify-content-center mt-4">
+                    {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page=1" aria-label="First">
+                            <span aria-hidden="true">&laquo;&laquo;</span>
+                        </a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}" aria-label="Previous">
+                            <span aria-hidden="true">&laquo;</span>
+                        </a>
+                    </li>
+                    {% endif %}
+                    
+                    {% for num in page_obj.paginator.page_range %}
+                        {% if page_obj.number == num %}
+                        <li class="page-item active"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
+                        {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                        <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
+                        {% endif %}
+                    {% endfor %}
+                    
+                    {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.next_page_number }}" aria-label="Next">
+                            <span aria-hidden="true">&raquo;</span>
+                        </a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}" aria-label="Last">
+                            <span aria-hidden="true">&raquo;&raquo;</span>
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+        {% else %}
+            <div class="alert alert-info text-center py-4">
+                <i class="bi bi-info-circle-fill me-2"></i>
+                No visualizations created yet. 
+                <a href="{% url 'index' %}" class="alert-link">Create your first visualization</a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Image Preview Modal -->
+<div class="modal fade" id="imageModal" tabindex="-1" aria-labelledby="imageModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="imageModalLabel">2D Visualization Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="modalImage" src="" class="img-fluid" alt="Visualization Preview">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+$(document).ready(function() {
+    // Unity launch buttons
+    $('.unity-link').on('click', function(e) {
+        e.preventDefault();
+        const id = $(this).data('id');
+        window.location.href = `unity://visualize?id=${id}`;
+    });
+    
+    // Image modal handler
+    $('#imageModal').on('show.bs.modal', function(event) {
+        const button = $(event.relatedTarget);
+        const imageSrc = button.data('image');
+        const modal = $(this);
+        modal.find('#modalImage').attr('src', imageSrc);
+    });
+});
+</script>
+{% endblock %}

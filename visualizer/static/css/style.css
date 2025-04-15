@@ -1,0 +1,46 @@
+body {
+    background-color: #f8f9fa;
+}
+
+.navbar-brand {
+    font-weight: bold;
+}
+
+.card {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.card-header {
+    border-bottom: 0;
+}
+
+pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.btn-primary {
+    background-color: #4e73df;
+    border-color: #4e73df;
+}
+
+.btn-primary:hover {
+    background-color: #2e59d9;
+    border-color: #2e59d9;
+}
+
+.btn-success {
+    background-color: #1cc88a;
+    border-color: #1cc88a;
+}
+
+.btn-success:hover {
+    background-color: #17a673;
+    border-color: #17a673;
+}
+
+.spinner-border {
+    width: 3rem;
+    height: 3rem;
+}

@@ -1,0 +1,171 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h3 class="my-2"><i class="bi bi-table me-2"></i>Data Input</h3>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle-fill me-2"></i>
+                    Enter your textual numerical data below. We'll process it and suggest suitable visualizations for VR.
+                </div>
+                
+                <form id="data-form" method="post" action="{% url 'process_data' %}">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        {{ form.input_text.label_tag }}
+                        {{ form.input_text }}
+                        <div class="form-text">
+                            Example: "Sales data for 2023: Q1: $10,000, Q2: $15,000, Q3: $12,000, Q4: $20,000"
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-arrow-right-circle me-2"></i>Process Data
+                        </button>
+                    </div>
+                </form>
+                
+                <div id="loading" class="text-center my-4 d-none">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Processing your data...</p>
+                </div>
+                
+                <div id="result-container" class="d-none mt-4">
+                    <div class="card">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0">Processing Results</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="result-content"></div>
+                            <div id="viz-suggestion" class="alert alert-success mt-3"></div>
+                            
+                            <div id="image-preview-container" class="text-center my-4 d-none">
+                                <h6>2D Preview:</h6>
+                                <img id="viz-preview" src="" class="img-fluid rounded border" alt="Visualization Preview">
+                            </div>
+                            
+                            <div class="d-flex justify-content-between mt-3">
+                                <a id="view-result" href="#" class="btn btn-primary">
+                                    <i class="bi bi-eye me-2"></i>View Detailed Results
+                                </a>
+                                <a id="unity-link" href="#" class="btn btn-success">
+                                    <i class="bi bi-controller me-2"></i>Visualize in 3D
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="error-container" class="alert alert-danger mt-4 d-none">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    <span id="error-message"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+$(document).ready(function() {
+    // Handle form submission
+    $('#data-form').submit(function(e) {
+        e.preventDefault();
+        
+        // Show loading indicator
+        $('#loading').removeClass('d-none');
+        $('#result-container').addClass('d-none');
+        $('#error-container').addClass('d-none');
+        $('#image-preview-container').addClass('d-none');
+        
+        // Get form data
+        const formData = $(this).serialize();
+        
+        // Send AJAX request
+        $.ajax({
+            url: $(this).attr('action'),
+            type: 'POST',
+            data: formData,
+            dataType: 'json',
+            success: function(response) {
+                // Hide loading indicator
+                $('#loading').addClass('d-none');
+                
+                if (response.success) {
+                    // Show result container
+                    $('#result-container').removeClass('d-none');
+                    
+                    // Format and display the result
+                    const resultHtml = `<div class="mb-3">
+                        <h6>Extracted Data:</h6>
+                        <pre class="bg-light p-2 rounded">${JSON.stringify(response.data, null, 2)}</pre>
+                    </div>`;
+                    
+                    $('#result-content').html(resultHtml);
+                    
+                    // Show visualization suggestion if available
+                    if (response.visualization_type) {
+                        $('#viz-suggestion').html(`
+                            <strong>Suggested Visualization:</strong> ${response.visualization_type}
+                        `);
+                    } else {
+                        $('#viz-suggestion').html(`
+                            <strong>Processed Successfully!</strong> Ready for visualization.
+                        `);
+                    }
+                    
+                    // Show image preview if available
+                    if (response.visualization_image) {
+                        $('#image-preview-container').removeClass('d-none');
+                        $('#viz-preview').attr('src', response.visualization_image);
+                    }
+                    
+                    // Update result link
+                    $('#view-result').attr('href', `/result/${response.id}/`);
+                    
+                    // Update Unity link
+                    $('#unity-link').attr('href', `unity://visualize?id=${response.id}`);
+                    
+                    // Add processing method info if available
+                    if (response.method) {
+                        const methodBadge = response.method === 'script' ? 
+                            '<span class="badge bg-info">Local Processing</span>' : 
+                            '<span class="badge bg-warning">API Processing</span>';
+                        $('#viz-suggestion').append(`<div class="mt-2">${methodBadge}</div>`);
+                    }
+                } else {
+                    // Show error message
+                    $('#error-container').removeClass('d-none');
+                    $('#error-message').text(response.errors || 'An unknown error occurred.');
+                }
+            },
+            error: function(xhr, status, error) {
+                // Hide loading indicator
+                $('#loading').addClass('d-none');
+                
+                // Show error message
+                $('#error-container').removeClass('d-none');
+                $('#error-message').text('Server error: ' + error);
+            }
+        });
+    });
+    
+    // Unity launch buttons
+    $('.unity-link, #unity-button').on('click', function(e) {
+        e.preventDefault();
+        const id = $(this).data('id');
+        window.location.href = `unity://visualize?id=${id}`;
+    });
+});
+</script>
+{% endblock %}
