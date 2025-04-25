@@ -1,74 +1,68 @@
+import ollama
 import pandas as pd
-import json
-from langchain_openai import OpenAIEmbeddings  # Updated import
-from langchain_community.vectorstores import FAISS  # Updated import
-from langchain.schema import Document
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
-from langchain.chat_models import ChatOpenAI  # Updated import for ChatOpenAI
+from typing import List
 
-# Set the OpenAI API key directly in the code (replace 'your-api-key-here' with your actual key)
-openai_api_key = "sk-1234abcd5678efgh1234abcd5678efgh1234abcd"  # Replace with your OpenAI API key
+# Initialize the Ollama chat model with the model name (replace "llama-2" with the actual model you want to use)
+model = ollama.chat(model="llama-2")
 
-# Load the custom dataset
-custom_dataset_path = r'C:\Users\Prachi\OneDrive\Documents\mini project ty\Text-to-VR-Visualizing-Numerical-Data\rag\rag_training_data.xlsx'  # Update with the actual path
-custom_dataset = pd.read_excel(custom_dataset_path)
+# Step 1: Function to Retrieve Relevant Data
+def retrieve_data(query: str, dataset: List[str]) -> List[str]:
+    """
+    Retrieve relevant data based on a simple keyword match.
+    In practice, you could use more advanced retrieval techniques such as embeddings.
+    """
+    relevant_data = [doc for doc in dataset if query.lower() in doc.lower()]
+    return relevant_data
 
-# Convert the 'Table' column from string format to JSON (list of dictionaries)
-def convert_to_json(table_str):
-    try:
-        return json.loads(table_str.replace("\n", "").replace("\r", ""))
-    except json.JSONDecodeError:
-        return None
+# Step 2: Function to Generate Response Using Ollama's Model
+def generate_response(retrieved_data: List[str], query: str) -> str:
+    """
+    Generate a response based on retrieved data and the query.
+    The retrieved data is provided as context for the model's generation.
+    """
+    # Concatenate the retrieved data into a single string
+    context = " ".join(retrieved_data)
+    
+    # Generate the response using Ollama
+    prompt = f"Given the following data: {context}, generate a response for the query: {query}"
+    response = model(prompt)
+    
+    return response
 
-# Apply the conversion to the 'Table' column
-custom_dataset['Table'] = custom_dataset['Table'].apply(convert_to_json)
+# Step 3: Full RAG Model
+def rag_model(query: str, dataset: List[str]) -> str:
+    """
+    Full Retrieval-Augmented Generation (RAG) pipeline:
+    1. Retrieve relevant data based on the query
+    2. Generate a response using the retrieved data
+    """
+    # Step 1: Retrieve relevant data
+    retrieved_data = retrieve_data(query, dataset)
+    
+    # If no relevant data is found, handle the case gracefully
+    if not retrieved_data:
+        return "Sorry, no relevant data found."
+    
+    # Step 2: Generate a response using Ollama
+    response = generate_response(retrieved_data, query)
+    return response
 
-# Create a list of documents from the dataset (table rows and visualisation type)
-docs = []
-for _, row in custom_dataset.iterrows():
-    table_repr = json.dumps(row['Table'])  # Use table as the content for similarity comparison
-    docs.append(
-        Document(
-            page_content=table_repr,
-            metadata={"chart": row['Visualisation Type']}
-        )
-    )
+# Example dataset (list of documents or statements)
+dataset = [
+    "Sales increased by 20% in Q1 2025",
+    "The average temperature in January was 5°C",
+    "In Q2 2025, the company expects a revenue increase of 10%",
+    "The company had a revenue growth of 15% in Q3 2024"
+]
 
-# Create the FAISS index using OpenAI embeddings
-embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)  # Pass the API key
-vectorstore = FAISS.from_documents(docs, embeddings)
+# Example queries
+queries = [
+    "What were the sales trends for Q1 2025?",
+    "What was the temperature in January?",
+    "What is the company's growth expectation for Q2?"
+]
 
-# Set up the RAG prompt template for chart selection
-chart_prompt = PromptTemplate(
-    template=(
-      "Given this JSON table:\n{query}\n\n"
-      "And these similar examples:\n{context}\n\n"
-      "Which chart type is most appropriate? Answer only 'bar' or 'line'."
-    ),
-    input_variables=["query", "context"]
-)
-
-# Set up the RAG chain using the FAISS retriever
-chart_chain = RetrievalQA.from_chain_type(
-    llm=ChatOpenAI(model="gpt-4o-mini", temperature=0),  # Adjust the model if needed
-    retriever=vectorstore.as_retriever(search_kwargs={"k": 3}),
-    chain_type="stuff",
-    return_source_documents=False,
-    chain_type_kwargs={"prompt": chart_prompt}
-)
-
-# Function to run the RAG model and predict the chart type
-def predict_chart_type(table):
-    table_json = json.dumps(table["rows"], ensure_ascii=False)  # Convert table rows to JSON string
-    result = chart_chain.run({
-        "query": table_json,  # The LLM-generated table (as JSON)
-        "context": json.dumps(example_tables)  # The example tables (as context)
-    })
-    return result
-
-# Example: Predicting chart type for a table
-user_generated_table = {"columns": ["Year", "Revenue"], "rows": [[2018, 50], [2019, 65], [2020, 80], [2021, 95]]}
-chart_type = predict_chart_type(user_generated_table)
-
-print("Recommended chart type:", chart_type)
+# Process each query and generate responses
+for query in queries:
+    print(f"Query: {query}")
+    print(f"Response: {rag_model(query, dataset)}\n")

@@ -1,0 +1,4 @@
+ollama pull llama3.1
+ollama pull nomic-embed-text
+
+pip install ollama chromadb pandas matplotlib
