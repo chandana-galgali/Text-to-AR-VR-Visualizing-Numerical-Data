@@ -76,14 +76,14 @@
     
     <div id="json-input">
         <h3>Enter JSON Data</h3>
-        <textarea id="data-input">{
-  "Survey Results": {
-    "Maharashtra": 35,
-    "Gujarat": 25,
-    "Karnataka": 20,
-    "Rajasthan": 10
-  }
-}</textarea>
+        <textarea id="data-input">[
+            { "title": "Minecraft", "value": 238 },
+            { "title": "GTA V", "value": 455 },
+            { "title": "Tetris", "value": 170 },
+            { "title": "Wii Sports", "value": 82 },
+            { "title": "PUBG", "value": 75 }
+          ]
+          </textarea>
         <button id="visualize-btn">Visualize Data</button>
     </div>
 
@@ -165,90 +165,80 @@
                 animate();
             }
             
-            // Create 3D bar chart from data
-            function createBarChart(data) {
+            /// Create 3D bar chart from array-of-objects JSON data
+            function createBarChart(dataArray) {
                 // Clear previous chart
                 clearChart();
-                
-                // Extract data
-                const categoryName = Object.keys(data)[0];
-                const categoryData = data[categoryName];
-                
-                if (!categoryData || typeof categoryData !== 'object') {
-                    console.error('Invalid data format');
+
+                if (!Array.isArray(dataArray)) {
+                    alert("Data must be an array of objects with 'label' and 'value' keys.");
                     return;
                 }
-                
-                // Create title text
-                createTextSprite(categoryName, 0, 50, 0, 10);
-                
-                // Extract labels and values
-                const dataLabels = Object.keys(categoryData);
-                const dataValues = dataLabels.map(label => categoryData[label]);
-                
-                // Calculate dimensions
-                const maxValue = Math.max(...dataValues);
+
+                const labelsArray = [];
+                const valuesArray = [];
+
+                for (const item of dataArray) {
+                    const label = item.label || item.name || item.category || item.title || item.country || item.language || item.company || item.movie;
+                    const value = item.value;
+
+                    if (label === undefined || value === undefined) continue;
+
+                    labelsArray.push(label);
+                    valuesArray.push(value);
+                }
+
+                if (labelsArray.length === 0 || valuesArray.length === 0) {
+                    alert("Invalid data. Ensure each object has a label (e.g. name) and a value.");
+                    return;
+                }
+
+                const maxValue = Math.max(...valuesArray);
                 const barWidth = 8;
                 const spacing = 4;
                 const barDepth = 8;
                 const heightScale = 40 / maxValue;
-                
-                // Calculate total width
-                const totalWidth = (barWidth + spacing) * dataValues.length;
+                const totalWidth = (barWidth + spacing) * valuesArray.length;
                 const startX = -totalWidth / 2 + barWidth / 2;
-                
-                // Colors for bars
+
+                createTextSprite("3D Data Chart", 0, 50, 0, 10);
+
                 const colors = [
                     0x3498db, 0xe74c3c, 0x2ecc71, 0xf39c12, 0x9b59b6,
                     0x1abc9c, 0xd35400, 0x34495e, 0x16a085, 0xc0392b
                 ];
-                
-                // Create bars
-                for (let i = 0; i < dataValues.length; i++) {
-                    const value = dataValues[i];
-                    const label = dataLabels[i];
+
+                for (let i = 0; i < valuesArray.length; i++) {
+                    const value = valuesArray[i];
+                    const label = labelsArray[i];
                     const height = value * heightScale;
                     const x = startX + i * (barWidth + spacing);
-                    
-                    // Create bar geometry
+
                     const geometry = new THREE.BoxGeometry(barWidth, height, barDepth);
-                    
-                    // Create material with phong shading for better look
                     const material = new THREE.MeshPhongMaterial({
                         color: colors[i % colors.length],
                         shininess: 60
                     });
-                    
-                    // Create mesh
+
                     const bar = new THREE.Mesh(geometry, material);
                     bar.position.set(x, height / 2, 0);
-                    
-                    // Store data with the bar for interactivity
-                    bar.userData = {
-                        label: label,
-                        value: value
-                    };
-                    
-                    // Add to chart group
+                    bar.userData = { label, value };
                     chartGroup.add(bar);
                     chartObjects.push(bar);
-                    
-                    // Create value label
-                    createTextSprite(value.toString(), x, height + 3, 0, 3);
-                    
-                    // Create category label
-                    const labelSprite = createTextSprite(label, x, -2, 0, 3);
+
+                    createTextSprite(value.toString(), x, height + 3, 0, 9);
+                    const labelSprite = createTextSprite(label, x, -2, 0, 9);
                     labels.push(labelSprite);
                 }
-                
-                // Position camera for good initial view
+
                 camera.position.set(0, maxValue * heightScale / 2, totalWidth * 1.5);
                 controls.target.set(0, maxValue * heightScale / 4, 0);
                 controls.update();
             }
-            
-            // Create text sprite for labels
-            function createTextSprite(text, x, y, z, size = 5) {
+
+                        
+                        // Create text sprite for labels
+            function createTextSprite(text, x, y, z, size = 24) {
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
                 canvas.width = 256;
