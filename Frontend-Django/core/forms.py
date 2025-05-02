@@ -1,9 +1,8 @@
 from django import forms
-from .models import Visualization
-
+from .models import ExtractedData
 class TextInputForm(forms.ModelForm):
     class Meta:
-        model = Visualization
+        model = ExtractedData
         fields = ['input_text']
         widgets = {
             'input_text': forms.Textarea(attrs={

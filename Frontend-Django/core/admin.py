@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Visualization
+from .models import ExtractedData
 # Register your models here.
 
-admin.site.register(Visualization)
+admin.site.register(ExtractedData)

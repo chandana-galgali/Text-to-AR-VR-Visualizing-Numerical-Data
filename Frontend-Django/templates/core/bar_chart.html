@@ -1,0 +1,378 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>3D Bar Chart</title>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+    #container { position: absolute; width: 100%; height: 100%; }
+    #info {
+      position: absolute; top: 10px; left: 10px;
+      background-color: rgba(0,0,0,0.7); color: white;
+      padding: 15px; border-radius: 5px; max-width: 300px; z-index: 100;
+    }
+    #json-display {
+      position: absolute; top: 10px; right: 10px;
+      background-color: rgba(0,0,0,0.7); color: white;
+      padding: 15px; border-radius: 5px; max-width: 300px; z-index: 100;
+      overflow-y: auto; max-height: 80vh;
+    }
+    #error-display {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: rgba(255,0,0,0.7); color: white;
+      padding: 15px; border-radius: 5px; max-width: 500px; z-index: 200;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="container"></div>
+
+  <div id="info">
+    <h2>3D Bar Chart</h2>
+    <p>
+      Controls:
+      <br>- Rotate: Left-click + drag
+      <br>- Pan: Right-click + drag
+      <br>- Zoom: Scroll wheel
+    </p>
+    <div id="hover-info"></div>
+  </div>
+
+  <div id="json-display">
+    <h3>Visualization Data</h3>
+    <pre id="json-content"></pre>
+  </div>
+
+  <div id="error-display">
+    <h3>Error</h3>
+    <p id="error-message"></p>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const container = document.getElementById('container');
+      const jsonContent = document.getElementById('json-content');
+      const hoverInfo = document.getElementById('hover-info');
+      const errorDisplay = document.getElementById('error-display');
+      const errorMessage = document.getElementById('error-message');
+
+      // Get the JSON data from Django template
+      let jsonData;
+      try {
+        // Try parsing the JSON data
+        jsonData = JSON.parse('{{ json_data|escapejs }}');
+        
+        // Display the JSON data
+        jsonContent.textContent = JSON.stringify(jsonData, null, 2);
+      } catch (error) {
+        // If parsing fails, use a fallback sample data
+        console.error("Error parsing JSON data:", error);
+        jsonData = [
+          {"context": "Sample A", "value": 50},
+          {"context": "Sample B", "value": 30},
+          {"context": "Sample C", "value": 70}
+        ];
+        jsonContent.textContent = "Error parsing JSON data. Using sample data instead.\n\n" + 
+                                JSON.stringify(jsonData, null, 2);
+      }
+
+      let scene, camera, renderer, controls, raycaster, mouse;
+      let chartGroup = null, chartObjects = [], labels = [];
+
+      function initScene() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x2a3b4c);
+
+        camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 40, 100);
+        camera.lookAt(0, 0, 0);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.25;
+
+        raycaster = new THREE.Raycaster();
+        mouse = new THREE.Vector2();
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(20, 40, 20);
+        scene.add(directionalLight);
+
+        const gridHelper = new THREE.GridHelper(100, 20);
+        scene.add(gridHelper);
+
+        chartGroup = new THREE.Group();
+        scene.add(chartGroup);
+
+        window.addEventListener('resize', onWindowResize);
+        window.addEventListener('mousemove', onMouseMove);
+
+        animate();
+      }
+
+      function createBarChart(data) {
+        clearChart();
+        errorDisplay.style.display = 'none';
+
+        try {
+          // Ensure data is normalized to the correct format
+          let normalizedData = normalizeData(data);
+          
+          if (normalizedData.length === 0) {
+            showError("No valid data to visualize");
+            return;
+          }
+
+          const barWidth = 8, spacing = 4, barDepth = 8;
+          const valuesArray = normalizedData.map(item => item.value);
+          const maxValue = Math.max(...valuesArray);
+          
+          if (maxValue === 0) {
+            showError("All values are zero. Cannot create meaningful chart.");
+            return;
+          }
+          
+          const heightScale = 40 / maxValue; 
+          const totalWidth = (barWidth + spacing) * normalizedData.length;
+          const startX = -totalWidth / 2 + barWidth / 2;
+
+          createTextSprite("3D Bar Chart", 0, 50, 0, 10);
+
+          const colors = [
+            0x3498db, 0xe74c3c, 0x2ecc71, 0xf39c12, 0x9b59b6,
+            0x1abc9c, 0xd35400, 0x34495e, 0x16a085, 0xc0392b
+          ];
+
+          normalizedData.forEach((item, i) => {
+            const label = String(item.context);
+            const value = item.value;
+            const height = value * heightScale;
+            const x = startX + i * (barWidth + spacing);
+
+            const geometry = new THREE.BoxGeometry(barWidth, height, barDepth);
+            const material = new THREE.MeshPhongMaterial({
+              color: colors[i % colors.length], shininess: 60
+            });
+
+            const bar = new THREE.Mesh(geometry, material);
+            bar.position.set(x, height / 2, 0);
+            bar.userData = item;
+            chartGroup.add(bar);
+            chartObjects.push(bar);
+
+            createTextSprite(value.toString(), x, height + 3, 0, 9);
+            const labelSprite = createTextSprite(
+              label.length > 10 ? label.substring(0, 10) + '...' : label, 
+              x, -2, 0, 9
+            );
+            labels.push(labelSprite);
+          });
+
+          // Set camera position based on chart size
+          camera.position.set(0, maxValue * heightScale / 2, totalWidth * 1.5);
+          controls.target.set(0, maxValue * heightScale / 4, 0);
+          controls.update();
+          
+          // Update JSON display with normalized data
+          jsonContent.textContent = JSON.stringify(normalizedData, null, 2);
+        } catch (error) {
+          console.error("Error creating bar chart:", error);
+          showError("Failed to create chart: " + error.message);
+        }
+      }
+
+      function normalizeData(data) {
+        // Handle different data formats
+        let normalizedData = [];
+        
+        try {
+          // If it's not an array, try to convert it
+          if (!Array.isArray(data)) {
+            // If it's an object with key-value pairs
+            if (typeof data === 'object' && data !== null) {
+              normalizedData = Object.entries(data).map(([key, value]) => {
+                return {
+                  context: key,
+                  value: parseFloat(value) || 0
+                };
+              });
+            } else {
+              // If it's something else, return empty array
+              return [];
+            }
+          } else if (data.length > 0) {
+            // It's already an array
+            normalizedData = data.map(item => {
+              // If item is a simple value
+              if (typeof item !== 'object' || item === null) {
+                return {
+                  context: `Item ${normalizedData.length + 1}`,
+                  value: parseFloat(item) || 0
+                };
+              }
+              
+              // If it already has context and value
+              if ('context' in item && 'value' in item) {
+                return {
+                  context: String(item.context),
+                  value: parseFloat(item.value) || 0
+                };
+              }
+              
+              // Otherwise, try to find appropriate keys
+              const keys = Object.keys(item);
+              let labelKey = keys.find(k => typeof item[k] === 'string');
+              let valueKey = keys.find(k => typeof item[k] === 'number');
+              
+              // If no string key, use the first key as label
+              if (!labelKey && keys.length > 0) {
+                labelKey = keys[0];
+              }
+              
+              // If no number key, use the second key (or first if only one)
+              if (!valueKey && keys.length > 0) {
+                valueKey = keys.length > 1 ? keys[1] : keys[0];
+              }
+              
+              if (labelKey && valueKey) {
+                return {
+                  context: String(item[labelKey]),
+                  value: parseFloat(item[valueKey]) || 0
+                };
+              }
+              
+              // As a last resort, stringify the item and use as context
+              return {
+                context: JSON.stringify(item).substring(0, 20) + '...',
+                value: 1
+              };
+            });
+          }
+          
+          // Filter out invalid data
+          return normalizedData.filter(item => !isNaN(item.value));
+        } catch (error) {
+          console.error("Error normalizing data:", error);
+          return [];
+        }
+      }
+
+      function showError(message) {
+        errorMessage.textContent = message;
+        errorDisplay.style.display = 'block';
+      }
+
+      function createTextSprite(text, x, y, z, size = 24) {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = 256;
+        canvas.height = 128;
+
+        context.fillStyle = 'rgba(50, 50, 50, 0.7)';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+
+        context.font = 'Bold 24px Arial';
+        context.fillStyle = 'white';
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.fillText(text, canvas.width / 2, canvas.height / 2);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const material = new THREE.SpriteMaterial({ map: texture });
+        const sprite = new THREE.Sprite(material);
+        sprite.position.set(x, y, z);
+        sprite.scale.set(size, size / 2, 1);
+        chartGroup.add(sprite);
+        return sprite;
+      }
+
+      function clearChart() {
+        while (chartGroup.children.length > 0) {
+          const object = chartGroup.children[0];
+          if (object.geometry) object.geometry.dispose();
+          if (object.material) {
+            if (Array.isArray(object.material)) {
+              object.material.forEach(m => m.dispose());
+            } else {
+              object.material.dispose();
+            }
+          }
+          chartGroup.remove(object);
+        }
+        chartObjects = [];
+        labels = [];
+      }
+
+      function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      function onMouseMove(event) {
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      }
+
+      function checkIntersections() {
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(chartObjects);
+
+        chartObjects.forEach(bar => {
+          if (bar.material && bar.material.emissive) {
+            bar.material.emissive.setHex(0x000000);
+          }
+        });
+
+        if (intersects.length > 0) {
+          const bar = intersects[0].object;
+          if (bar.material && bar.material.emissive) {
+            bar.material.emissive.setHex(0x333333);
+          }
+          
+          const userData = bar.userData;
+          if (userData) {
+            let html = "<h3>Data</h3><ul>";
+            for (const key in userData) {
+              html += `<li><strong>${key}:</strong> ${userData[key]}</li>`;
+            }
+            html += "</ul>";
+            hoverInfo.innerHTML = html;
+          }
+        } else {
+          hoverInfo.innerHTML = '';
+        }
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        checkIntersections();
+        labels.forEach(label => {
+          if (label && camera) {
+            label.lookAt(camera.position);
+          }
+        });
+        renderer.render(scene, camera);
+      }
+
+      // Initialize the scene and create the bar chart
+      initScene();
+      createBarChart(jsonData);
+    });
+  </script>
+</body>
+</html>

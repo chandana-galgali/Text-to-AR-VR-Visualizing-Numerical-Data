@@ -1,0 +1,262 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>3D Line Chart</title>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+    #container { position: absolute; width: 100%; height: 100%; }
+    #info {
+      position: absolute; top: 10px; left: 10px;
+      background-color: rgba(0,0,0,0.7); color: white;
+      padding: 15px; border-radius: 5px; width: 300px;
+      z-index: 100;
+    }
+    #json-display {
+      position: absolute; top: 10px; right: 10px;
+      background-color: rgba(0,0,0,0.7); color: white;
+      padding: 15px; border-radius: 5px; width: 300px; 
+      z-index: 100; overflow-y: auto; max-height: 80vh;
+    }
+  </style>
+</head>
+<body>
+  <div id="container"></div>
+  <div id="info">
+    <h2>3D Line Chart</h2>
+    <p>Rotate: Left-click + drag<br>Pan: Right-click + drag<br>Zoom: Scroll wheel</p>
+    <div id="hover-details"></div>
+  </div>
+  <div id="json-display">
+    <h3>Visualization Data</h3>
+    <pre id="json-content"></pre>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const container = document.getElementById('container');
+      const jsonContent = document.getElementById('json-content');
+      const hoverDetails = document.getElementById('hover-details');
+
+      // Get the JSON data from Django template
+      const jsonData = JSON.parse("{{ json_data|escapejs }}");
+      jsonContent.textContent = JSON.stringify(jsonData, null, 2);
+
+      let scene, camera, renderer, controls;
+      let chartGroup = new THREE.Group();
+      let linePoints = [];
+      let dataPoints = [];
+      let labels = [];
+      let raycaster = new THREE.Raycaster();
+      let mouse = new THREE.Vector2();
+      let hoveredObject = null;
+
+      const infoElement = document.getElementById('info');
+      const originalInfoHTML = infoElement.innerHTML;
+
+      initScene();
+
+      function initScene() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x2a3b4c);
+
+        camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 40, 100);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.25;
+
+        const light = new THREE.AmbientLight(0xffffff, 0.7);
+        scene.add(light);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+        dirLight.position.set(50, 50, 50);
+        scene.add(dirLight);
+
+        const grid = new THREE.GridHelper(100, 20);
+        scene.add(grid);
+        scene.add(chartGroup);
+
+        window.addEventListener('resize', onResize);
+        window.addEventListener('mousemove', onMouseMove);
+
+        animate();
+        createLineChart(jsonData);
+      }
+
+      function onResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      function onMouseMove(event) {
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        checkIntersections();
+        renderer.render(scene, camera);
+      }
+
+      function createLineChart(data) {
+        clearChart();
+
+        if (!Array.isArray(data)) data = [data];
+        if (data.length === 0) {
+          alert("No data to visualize");
+          return;
+        }
+
+        const sample = data[0];
+        const keys = Object.keys(sample);
+        let valueKey = keys.find(k => typeof sample[k] === "number");
+        let labelKey = keys.find(k => typeof sample[k] === "string");
+
+        if ('context' in sample && 'value' in sample) {
+          labelKey = 'context';
+          valueKey = 'value';
+        }
+
+        if (!valueKey && keys.length > 1) valueKey = keys[1];
+        if (!labelKey && keys.length > 0) labelKey = keys[0];
+
+        const points = [];
+        const spacing = 10;
+        const valueArray = data.map(d => {
+          const val = d[valueKey];
+          return typeof val === "number" ? val : parseFloat(val) || 0;
+        });
+
+        const maxValue = Math.max(...valueArray);
+        const heightScale = 40 / (maxValue || 1);
+        const offsetX = -((data.length - 1) * spacing) / 2;
+
+        createTextSprite("3D Line Chart", 0, 50, 0, true);
+
+        data.forEach((d, i) => {
+          const x = offsetX + i * spacing;
+          const value = typeof d[valueKey] === "number" ? d[valueKey] : parseFloat(d[valueKey]) || 0;
+          const y = value * heightScale;
+          const z = 0;
+
+          points.push(new THREE.Vector3(x, y, z));
+          createTextSprite(String(d[labelKey]), x, -2, z, false);
+
+          const pointGeometry = new THREE.SphereGeometry(1, 16, 16);
+          const pointMaterial = new THREE.MeshPhongMaterial({ color: 0x00ffff, shininess: 60 });
+          const point = new THREE.Mesh(pointGeometry, pointMaterial);
+          point.position.set(x, y, z);
+          point.userData = {
+            label: d[labelKey],
+            value: value,
+            originalData: d
+          };
+          chartGroup.add(point);
+          dataPoints.push(point);
+
+          const valueLabel = createTextSprite(value.toString(), x, y + 3, z, false, d);
+          labels.push(valueLabel);
+        });
+
+        const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+        const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ffff });
+        const line = new THREE.Line(lineGeometry, lineMaterial);
+        chartGroup.add(line);
+        linePoints.push(line);
+
+        camera.position.set(0, maxValue * heightScale / 2, (data.length * spacing) * 1.5);
+        controls.target.set(0, maxValue * heightScale / 4, 0);
+        controls.update();
+      }
+
+      function createTextSprite(text, x, y, z, isTitle = false, userData = null) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = 'rgba(50, 50, 50, 0.7)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.font = isTitle ? 'Bold 28px Arial' : 'Bold 24px Arial';
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true });
+        const sprite = new THREE.Sprite(spriteMaterial);
+
+        sprite.position.set(x, y, z);
+        sprite.scale.set(isTitle ? 10 : 7, isTitle ? 5 : 3.5, 1);
+        chartGroup.add(sprite);
+
+        if (userData) sprite.userData = userData;
+
+        return sprite;
+      }
+
+      function clearChart() {
+        while (chartGroup.children.length > 0) {
+          const obj = chartGroup.children[0];
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+            else obj.material.dispose();
+          }
+          chartGroup.remove(obj);
+        }
+
+        linePoints = [];
+        dataPoints = [];
+        labels = [];
+        hoveredObject = null;
+        hoverDetails.innerHTML = '';
+      }
+
+      function checkIntersections() {
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(dataPoints);
+
+        dataPoints.forEach(point => {
+          if (point.material) {
+            point.material.color.set(0x00ffff);
+            point.material.emissive && point.material.emissive.set(0x000000);
+          }
+        });
+
+        if (intersects.length > 0) {
+          const intersected = intersects[0].object;
+          intersected.material.color.set(0xff7700);
+          intersected.material.emissive && intersected.material.emissive.set(0x333333);
+
+          const userData = intersected.userData;
+          let html = "<h3>Data Point</h3><ul>";
+          for (const key in userData.originalData) {
+            html += `<li><strong>${key}:</strong> ${userData.originalData[key]}</li>`;
+          }
+          html += "</ul>";
+          hoverDetails.innerHTML = html;
+        } else {
+          hoverDetails.innerHTML = '';
+        }
+      }
+    });
+  </script>
+</body>
+</html>
