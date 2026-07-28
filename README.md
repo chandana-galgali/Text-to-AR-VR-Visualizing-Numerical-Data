@@ -13,7 +13,7 @@ The system processes unstructured text, converts it into a clean structured layo
 * **Sequential Text-to-Structure Parsing:** Employs an LLM to accurately extract numerical data from free-form text and structure it cleanly.
 * **RAG-Driven Visualization Selection:** Uses a custom RAG framework to analyze the structured data and intelligently select the optimal visualization type (bar charts and line charts).
 * **Immersive 3D Spatial Rendering:** Programmatically positions 3D assets within a spatial coordinate system inside Unity.
-* **Interactive VR Tools:** Enables real-time data editing via JSON fields, zooming, and filtering directly within the virtual environment.
+* **Interactive VR Tools:** Enables real-time data editing via JSON fields, spatial zooming, filtering, and hover-triggered tooltips to inspect specific data labels and numerical values in 3D space.
 
 ## 🛠️ Tech Stack & Architecture
 
